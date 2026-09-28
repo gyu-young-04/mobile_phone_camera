@@ -59,3 +59,8 @@ A(무보정) / B(갤럭시 기본, 별도 촬영 후 평균 비교) / C(고정 �
 
 ## 현재 상태
 계획 단계. 발표자료는 [`docs/설계프로젝트1_주제발표_EIS.pptx`](docs/설계프로젝트1_주제발표_EIS.pptx) 참고. 코드(Android 앱, 분석 스크립트)는 이후 추가 예정.
+
+개발 환경: Git, Python 3.12(+ opencv-python, numpy, scikit-learn), Android Studio 준비 완료.
+
+## 주차별 준비 문서
+- [4~5주차 — 기록 앱 만들기 + 시간 정렬·OIS 확인](docs/week4-5_prep.md): 이번 주 작업 전에 알아야 할 배경지식과 게이트 체크리스트
