@@ -7,13 +7,27 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
+    <!-- 글이 화면보다 길어도 손가락으로 위아래로 넘겨 볼 수 있게 감싸는 상자.
+         0dp는 "부모에 붙인 위아래좌우 규칙대로 꽉 채워라"라는 뜻 -->
+    <ScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- 카메라 정보를 글자로 보여주는 곳.
+             id(infoText)를 붙여둔 이유: MainActivity.kt에서 이 이름으로 찾아서 글자를 채우기 위해서 -->
+        <TextView
+            android:id="@+id/infoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:text="카메라 정보를 읽는 중..."
+            android:textIsSelectable="true"
+            android:textSize="14sp" />
+
+    </ScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
