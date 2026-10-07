@@ -50,7 +50,7 @@ Camera2는 안드로이드에서 카메라를 세밀하게 다루는 저수준 A
 - `CameraManager` → `CameraDevice` → `CaptureSession` → `CaptureRequest` 순서로 카메라를 연다
 - 매 프레임마다 `CaptureResult`가 나오고, 여기서 `CaptureResult.SENSOR_TIMESTAMP`로 **그 프레임이 찍힌 시각(나노초)** 을 얻을 수 있다. 이것도 자이로처럼 부팅 이후 기준 시간이라, 조건이 맞으면 자이로 타임스탬프와 같은 시계를 쓰는 셈이 된다.
 - `CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE` 값이 `REALTIME`이면 자이로와 같은 시간 기준을 쓰는 것이고, `UNKNOWN`이면 기준이 달라서 그대로 비교할 수 없다. **이번 주에 반드시 확인해야 할 값.**
-- `CameraCharacteristics.SENSOR_ROLLING_SHUTTER_SKEW`: 프레임의 맨 윗줄과 맨 아랫줄이 찍히는 시각 차이(나노초). 이번 주엔 이 값이 얼마인지 읽어보기만 하면 된다(보정은 다음 단계).
+- `CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW`: 프레임의 맨 윗줄과 맨 아랫줄이 찍히는 시각 차이(나노초). 이번 주엔 이 값이 얼마인지 읽어보기만 하면 된다(보정은 다음 단계). **정정**: 처음엔 이 값을 `CameraCharacteristics`(카메라 스펙표)에서 읽는다고 적었는데 틀렸다. 이 값은 **실제로 촬영할 때 나오는 결과(CaptureResult)** 에 들어 있어서, 카메라를 열어 찍기 시작한 뒤에야 읽을 수 있다(카메라 권한 필요).
 - `CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE`: OIS를 켜고 끄는 설정. `OFF`로 지정 가능한지가 이번 주 확인 대상 (기기·카메라 앱 제조사에 따라 강제로 켜져 있을 수 있음).
 - `CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE`: 갤럭시 기본 영상 안정화(EIS)를 켜고 끄는 설정. 7장 검증에서 B(갤럭시 기본) 촬영에 쓰인다.
 - 영상 저장은 `MediaRecorder`나 `MediaCodec`으로 인코딩하면서 진행. 처음엔 `MediaRecorder`가 훨씬 간단하다.
@@ -63,7 +63,7 @@ Camera2는 안드로이드에서 카메라를 세밀하게 다루는 저수준 A
 2. 미리보기 화면 + 녹화 시작/정지 버튼
 3. 녹화 중 자이로 값을 타임스탬프와 함께 CSV 파일로 저장 (`시각, x, y, z` 한 줄씩)
 4. 녹화된 영상 파일 (mp4)
-5. 로그로 다음 값을 출력해서 확인: `SENSOR_INFO_TIMESTAMP_SOURCE`, `SENSOR_ROLLING_SHUTTER_SKEW`, OIS를 OFF로 설정했을 때 실제로 적용되는지
+5. 로그로 다음 값을 출력해서 확인: `SENSOR_INFO_TIMESTAMP_SOURCE`(스펙표에서 읽음), OIS 지원 모드(스펙표에서 읽음), `SENSOR_ROLLING_SHUTTER_SKEW`(촬영을 시작해야 읽을 수 있음), OIS를 OFF로 설정했을 때 실제로 적용되는지(촬영 결과로 확인)
 
 ---
 
