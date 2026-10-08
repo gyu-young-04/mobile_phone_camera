@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
     }
 
     // 화면이 가려지면 자동으로 부른다 → 알림 신청을 취소한다. 안 하면 센서가 계속 켜져서 배터리를 쓴다
+    // 이 앱을 사용하지않으면 센서가 켜져있지 않아서 배터리 절약을 위한것?
     override fun onPause() {
         super.onPause()
         sensorManager.unregisterListener(this)
@@ -89,7 +90,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
 
     // 자이로 값이 생길 때마다 안드로이드가 자동으로 불러주는 곳 (초당 수백 번!)
     // event.values = [x, y, z] 회전 속도(rad/s), event.timestamp = 값이 측정된 시각(나노초, 부팅 후 경과)
-    override fun onSensorChanged(event: SensorEvent) {
+    override fun onSensorChanged(event: SensorEvent) {  // 센서이벤트 발생시에 자동실행됨?
+        // 센서이벤트라는곳에서 여러 센서들의 현재 값들이 있다?
         // 구간의 첫 값은 시작 시각만 기록하고 끝낸다
         if (windowStartNs == 0L) {
             windowStartNs = event.timestamp
@@ -128,9 +130,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
     // 센서 정확도가 바뀔 때 부르는 곳. 이번엔 안 쓰지만 SensorEventListener의 약속이라 꼭 적어야 한다
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
+
+
+
+    // 자이로 하나의 정보를 글자로 만들어 돌려주기만 합니다. 화면에 출력하는 건 onCreate입니다.
+    // 그리고 센서 정보는 함수가 아니라 onCreate에서 담당자한테 미리 받아둔 변수 gyro 에서 가져옵니다
     // 자이로 센서의 "스펙표"를 글자로 만든다 (카메라 스펙표와 같은 역할)
     private fun readGyroSpecs(): String {
-        val s = gyro ?: return "■ 자이로 센서: 이 폰에는 없음\n"
+        val s = gyro ?: return "■ 자이로 센서: 이 폰에는 없음\n"   // 아까 폰에있는 자이로 센서정보에서부터
         val maxHz = if (s.minDelay > 0) 1_000_000 / s.minDelay else 0  // minDelay(마이크로초)로 최대 Hz를 계산
         return "■ 자이로 센서 스펙\n" +
             "  이름: ${s.name}\n" +
@@ -186,6 +193,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
         sb.appendLine("   실제 촬영 결과에 들어 있어서, 카메라를 열어 찍는 단계에서 확인한다.")
         return sb.toString()
     }
+
+
+
+    // 아래에 있는것들은 컴퓨터가 가진 이름표를 일반인이 이해하기 쉬운 언어로 번역한것
 
     // 숫자 코드를 사람이 읽을 이름으로 바꿔주는 도우미 함수들 (그냥 번역표라서 이해 안 해도 됨)
     private fun facingName(v: Int?) = when (v) {
