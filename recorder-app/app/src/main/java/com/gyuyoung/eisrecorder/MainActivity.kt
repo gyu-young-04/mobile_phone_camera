@@ -2,10 +2,15 @@
 package com.gyuyoung.eisrecorder
 
 import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -25,7 +30,20 @@ import androidx.core.view.WindowInsetsCompat
 // setContentView(R.layout.activity_main)이
 // "화면 모양은 activity_main.xml로 해줘"라는 뜻입니다.
 
-class MainActivity : AppCompatActivity() {  // 하나의 화면
+class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 화면 (+ 센서 알림을 받겠다는 약속)
+
+    // [3단계] 센서에 쓰는 변수들. 클래스 안에 두면 아래 여러 함수가 같이 쓸 수 있다
+    private lateinit var sensorManager: SensorManager  // 센서 담당자 (lateinit = onCreate에서 나중에 채우겠다는 약속)
+    private var gyro: Sensor? = null                   // 자이로 센서 (? = 폰에 없을 수도 있다는 표시)
+    private lateinit var gyroText: TextView            // 실시간 값을 보여줄 글자 칸
+    private var windowStartNs = 0L                     // 주기 계산용: 이번 구간이 시작된 센서 시각
+    private var windowCount = 0                        // 주기 계산용: 이번 구간에서 받은 값의 개수
+
+    // 센서 값을 받을 간격 (마이크로초, 1µs = 0.000001초). 이 값이 프로젝트의 "자이로 측정 주기" 변수다.
+    // 8000µs = 0.008초 = 125Hz. 이 폰의 자이로가 허용하는 최소 간격(스펙표의 "최소 간격")과 같다.
+    // - 0µs(가장 빠르게)로 요청하면: 권한(HIGH_SAMPLING_RATE_SENSORS)이 없다고 앱이 꺼졌다.
+    // - 5000µs(200Hz)로 요청하면: 신청이 실패했다(센서가 허용하는 속도보다 빨라서로 추정).
+    private val samplingPeriodUs = 8000
 
     override fun onCreate(savedInstanceState: Bundle?) {    // 화면이 만들어질때 자동으로 실행되는곳
         super.onCreate(savedInstanceState)
@@ -37,10 +55,89 @@ class MainActivity : AppCompatActivity() {  // 하나의 화면
             insets
         }
 
+        // ---------------- 3단계: 자이로 센서 준비 ----------------
+        gyroText = findViewById(R.id.gyroText)                                     // XML의 실시간 값 칸을 이름표로 찾는다
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager  // 센서 담당자 (어제 CameraManager와 같은 패턴)
+        gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)               // 담당자에게 "자이로 센서 주세요"
+
         // ---------------- 2단계: 카메라 스펙표 읽기 ----------------
-        val report = readCameraSpecs()                           // 스펙표를 읽어서 글자로 만든다
+        val report = readGyroSpecs() + "\n" + readCameraSpecs()  // 자이로 스펙 + 카메라 스펙표를 합쳐서 글자로 만든다
         findViewById<TextView>(R.id.infoText).text = report      // XML에 만들어 둔 글자 칸(infoText)에 채운다
-        report.lines().forEach { Log.d("EIS", it) }              // Logcat에도 한 줄씩 출력 (태그 "EIS"로 검색)
+        report.lines().forEach { Log.d("EIS", it) }  // Logcat에도 한 줄씩 출력 (태그 "EIS"로 검색)
+    }
+
+    // ================= 3단계: 자이로 센서 값 받기 =================
+
+    // 화면이 보이기 시작할 때 안드로이드가 자동으로 부른다 → 여기서 센서 알림을 신청한다
+    override fun onResume() {
+        super.onResume()
+        windowStartNs = 0L  // 주기 계산을 처음부터 다시 시작
+        // gyro가 있으면(?.let) 신청한다. samplingPeriodUs 간격으로 값을 알려달라는 뜻
+        gyro?.let {
+            // registerListener는 "신청이 받아들여졌는가"를 true/false로 돌려준다. 꼭 확인해야 한다!
+            val ok = sensorManager.registerListener(this, it, samplingPeriodUs)
+            Log.d("EIS", "자이로 신청 결과: $ok (간격 ${samplingPeriodUs}µs)")
+            if (!ok) gyroText.text = "자이로 신청 실패! (간격 ${samplingPeriodUs}µs)"
+        }
+    }
+
+    // 화면이 가려지면 자동으로 부른다 → 알림 신청을 취소한다. 안 하면 센서가 계속 켜져서 배터리를 쓴다
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
+    // 자이로 값이 생길 때마다 안드로이드가 자동으로 불러주는 곳 (초당 수백 번!)
+    // event.values = [x, y, z] 회전 속도(rad/s), event.timestamp = 값이 측정된 시각(나노초, 부팅 후 경과)
+    override fun onSensorChanged(event: SensorEvent) {
+        // 구간의 첫 값은 시작 시각만 기록하고 끝낸다
+        if (windowStartNs == 0L) {
+            windowStartNs = event.timestamp
+            windowCount = 0
+            return
+        }
+        windowCount++
+
+        // 센서는 빠르게 받지만 화면은 0.25초에 한 번만 갱신한다 (화면을 너무 자주 바꾸면 앱이 느려진다)
+        val elapsedNs = event.timestamp - windowStartNs
+        if (elapsedNs < 250_000_000L) return
+
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
+        val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())      // 세 축을 합친 전체 회전 속도
+        val hz = windowCount * 1_000_000_000.0 / elapsedNs                   // 1초에 몇 번 도착했나
+        val lagMs = (SystemClock.elapsedRealtimeNanos() - event.timestamp) / 1_000_000.0  // "지금 시각 - 센서 시각"(ms)
+
+        gyroText.text = """
+            자이로 (단위: rad/s)
+            x: ${"%8.3f".format(x)}
+            y: ${"%8.3f".format(y)}
+            z: ${"%8.3f".format(z)}
+            회전 속도: ${"%.3f".format(magnitude)} rad/s (약 ${"%.1f".format(Math.toDegrees(magnitude))} °/s)
+            도착 주기: ${"%.0f".format(hz)} Hz (간격 ${"%.2f".format(1000.0 / hz)} ms)
+            센서 시각: ${event.timestamp} ns
+            지금 - 센서 시각: ${"%.2f".format(lagMs)} ms
+        """.trimIndent()
+        Log.d("EIS", "gyro x=${"%.3f".format(x)} y=${"%.3f".format(y)} z=${"%.3f".format(z)} | ${"%.0f".format(hz)} Hz | lag ${"%.2f".format(lagMs)} ms")
+
+        windowStartNs = event.timestamp  // 다음 구간 시작
+        windowCount = 0
+    }
+
+    // 센서 정확도가 바뀔 때 부르는 곳. 이번엔 안 쓰지만 SensorEventListener의 약속이라 꼭 적어야 한다
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    // 자이로 센서의 "스펙표"를 글자로 만든다 (카메라 스펙표와 같은 역할)
+    private fun readGyroSpecs(): String {
+        val s = gyro ?: return "■ 자이로 센서: 이 폰에는 없음\n"
+        val maxHz = if (s.minDelay > 0) 1_000_000 / s.minDelay else 0  // minDelay(마이크로초)로 최대 Hz를 계산
+        return "■ 자이로 센서 스펙\n" +
+            "  이름: ${s.name}\n" +
+            "  제조사: ${s.vendor}\n" +
+            "  최소 간격: ${s.minDelay} µs  (최대 약 $maxHz Hz)\n" +
+            "  측정 범위: ±${s.maximumRange} rad/s\n" +
+            "  해상도: ${s.resolution} rad/s\n"
     }
 
     // 폰의 모든 카메라의 "스펙표(CameraCharacteristics)"를 읽어서 하나의 글자로 만들어 돌려준다.
@@ -61,6 +158,7 @@ class MainActivity : AppCompatActivity() {  // 하나의 화면
                 continue  // 이 카메라는 건너뛰고 다음 번호표로
             }
 
+            // c.get(키) - 스펙표에서 항목 하나를 꺼냄
             sb.appendLine("■ 카메라 ID $id")
             sb.appendLine("  방향: ${facingName(c.get(CameraCharacteristics.LENS_FACING))}")
             sb.appendLine("  제어 수준: ${hardwareLevelName(c.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL))}")

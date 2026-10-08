@@ -6,6 +6,21 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
+    <!-- 이 xml 디자인에 있는 숫자들이 어디함수에서 받아올것인가 -->
+
+    <!-- [3단계] 자이로 값을 실시간으로 보여주는 칸. 화면 맨 위에 고정해서 아래를 넘겨도 계속 보인다.
+         id(gyroText)로 MainActivity.kt가 이 칸을 찾아서 0.25초마다 글자를 바꾼다 -->
+    <TextView
+        android:id="@+id/gyroText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:padding="16dp"
+        android:text="자이로 값을 기다리는 중..."
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- 글이 화면보다 길어도 손가락으로 위아래로 넘겨 볼 수 있게 감싸는 상자.
          0dp는 "부모에 붙인 위아래좌우 규칙대로 꽉 채워라"라는 뜻 -->
@@ -15,7 +30,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/gyroText">
 
         <!-- 카메라 정보를 글자로 보여주는 곳.
              id(infoText)를 붙여둔 이유: MainActivity.kt에서 이 이름으로 찾아서 글자를 채우기 위해서 -->
