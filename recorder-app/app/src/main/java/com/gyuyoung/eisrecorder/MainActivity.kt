@@ -12,11 +12,19 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import android.widget.Button
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import java.io.BufferedWriter
+import java.io.File
+import java.io.FileWriter
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // 프로젝트 흐름
 
@@ -45,6 +53,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
     // - 5000µs(200Hz)로 요청하면: 신청이 실패했다(센서가 허용하는 속도보다 빨라서로 추정).
     private val samplingPeriodUs = 8000
 
+    // [4단계] CSV 기록에 쓰는 변수들
+    private lateinit var recordButton: Button       // 기록 시작/정지 버튼
+    private lateinit var recordStatus: TextView     // 기록 상태를 보여줄 글자 칸
+    private var isRecording = false                 // 지금 기록 중인가? onSensorChanged가 이 값을 보고 파일에 쓸지 정한다
+    private var csvWriter: BufferedWriter? = null   // 열려 있는 CSV 파일 (기록 중에만 있어서 ?)
+    private var csvFile: File? = null               // 기록 중인 파일 정보 (이름, 위치)
+    private var sampleCount = 0L                    // 지금까지 파일에 쓴 값의 개수
+    private var firstSampleNs = 0L                  // 첫 값의 센서 시각
+    private var lastSampleNs = 0L                   // 마지막 값의 센서 시각
+
     override fun onCreate(savedInstanceState: Bundle?) {    // 화면이 만들어질때 자동으로 실행되는곳
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -59,6 +77,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
         gyroText = findViewById(R.id.gyroText)                                     // XML의 실시간 값 칸을 이름표로 찾는다
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager  // 센서 담당자 (어제 CameraManager와 같은 패턴)
         gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)               // 담당자에게 "자이로 센서 주세요"
+
+        // ---------------- 4단계: 기록 버튼 연결 ----------------
+        recordButton = findViewById(R.id.recordButton)   // 이름표로 버튼을 찾는다 (gyroText와 같은 방식)
+        recordStatus = findViewById(R.id.recordStatus)
+        // setOnClickListener = "이 버튼이 눌리면 { } 안의 코드를 실행해줘"라고 신청 (콜백). 호출은 안드로이드가 한다
+        recordButton.setOnClickListener {
+            if (isRecording) stopRecording() else startRecording()   // 기록 중이면 정지, 아니면 시작
+        }
 
         // ---------------- 2단계: 카메라 스펙표 읽기 ----------------
         val report = readGyroSpecs() + "\n" + readCameraSpecs()  // 자이로 스펙 + 카메라 스펙표를 합쳐서 글자로 만든다
@@ -85,13 +111,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
     // 이 앱을 사용하지않으면 센서가 켜져있지 않아서 배터리 절약을 위한것?
     override fun onPause() {
         super.onPause()
+        if (isRecording) stopRecording()   // [4단계] 화면이 가려지면 센서도 끊기므로, 기록도 끝내고 파일을 닫는다
         sensorManager.unregisterListener(this)
     }
 
-    // 자이로 값이 생길 때마다 안드로이드가 자동으로 불러주는 곳 (초당 수백 번!)
+    // 자이로 값이 생길 때마다 안드로이드가 자동으로 불러주는 곳 (이 폰은 초당 125번)
     // event.values = [x, y, z] 회전 속도(rad/s), event.timestamp = 값이 측정된 시각(나노초, 부팅 후 경과)
     override fun onSensorChanged(event: SensorEvent) {  // 센서이벤트 발생시에 자동실행됨?
         // 센서이벤트라는곳에서 여러 센서들의 현재 값들이 있다?
+        // [4단계] 기록 중이면 값이 올 때마다 파일에 한 줄 쓴다.
+        // 화면 갱신(0.25초에 한 번)과 달리 "모든 값"을 저장해야 해서, 아래 건너뛰는 코드보다 먼저 둔다
+        if (isRecording) writeSample(event)
+
         // 구간의 첫 값은 시작 시각만 기록하고 끝낸다
         if (windowStartNs == 0L) {
             windowStartNs = event.timestamp
@@ -123,12 +154,76 @@ class MainActivity : AppCompatActivity(), SensorEventListener {  // 하나의 �
         """.trimIndent()
         Log.d("EIS", "gyro x=${"%.3f".format(x)} y=${"%.3f".format(y)} z=${"%.3f".format(z)} | ${"%.0f".format(hz)} Hz | lag ${"%.2f".format(lagMs)} ms")
 
+        if (isRecording) recordStatus.text = "기록 중... 샘플 ${sampleCount}개"   // [4단계] 화면에는 0.25초마다 개수만 갱신
+
         windowStartNs = event.timestamp  // 다음 구간 시작
         windowCount = 0
     }
 
     // 센서 정확도가 바뀔 때 부르는 곳. 이번엔 안 쓰지만 SensorEventListener의 약속이라 꼭 적어야 한다
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    // ================= 4단계: 자이로 값을 CSV 파일로 저장 =================
+
+    // 버튼을 눌러 기록을 시작한다: 파일을 만들고 맨 윗줄(제목줄)을 쓴 뒤 "기록 중" 상태로 바꾼다
+    private fun startRecording() {
+        // getExternalFilesDir = 이 앱 전용 저장 폴더. 이 앱만 쓰는 폴더라서 저장 권한이 필요 없다 (앱을 지우면 같이 지워진다)
+        val dir = getExternalFilesDir(null)
+        if (dir == null) {
+            recordStatus.text = "저장 폴더를 열 수 없음"
+            return
+        }
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())  // 예: 20261009_153012 (파일 이름이 겹치지 않게)
+        val file = File(dir, "gyro_$stamp.csv")
+        try {
+            // BufferedWriter = 값을 모아뒀다가 한 번에 쓰는 도구 (한 줄마다 저장장치를 건드리면 느려서)
+            val writer = BufferedWriter(FileWriter(file))
+            writer.write("timestamp_ns,x_rad_s,y_rad_s,z_rad_s\n")   // CSV 제목줄 (열 이름)
+            csvWriter = writer
+            csvFile = file
+        } catch (e: IOException) {   // 파일 만들기는 실패할 수 있어서 안전장치(try/catch)
+            recordStatus.text = "파일을 만들 수 없음: ${e.message}"
+            return
+        }
+        sampleCount = 0
+        firstSampleNs = 0L
+        lastSampleNs = 0L
+        isRecording = true           // 이제부터 onSensorChanged가 값을 파일에 쓴다
+        recordButton.text = "기록 정지"
+        recordStatus.text = "기록 중..."
+    }
+
+    // 값 하나를 CSV 한 줄로 쓴다. onSensorChanged가 값이 올 때마다(1초에 125번) 부른다
+    private fun writeSample(event: SensorEvent) {
+        val writer = csvWriter ?: return   // 열린 파일이 없으면 아무것도 안 하고 끝
+        try {
+            // Locale.US = 소수점을 항상 "."으로 쓰는 설정. (나라 설정에 따라 ","가 되면 CSV가 깨진다)
+            writer.write(String.format(Locale.US, "%d,%.6f,%.6f,%.6f\n", event.timestamp, event.values[0], event.values[1], event.values[2]))
+        } catch (e: IOException) {
+            Log.e("EIS", "CSV 쓰기 실패: ${e.message}")
+            stopRecording()
+            return
+        }
+        if (sampleCount == 0L) firstSampleNs = event.timestamp
+        lastSampleNs = event.timestamp
+        sampleCount++
+    }
+
+    // 기록을 끝낸다: 모아둔 내용을 파일에 마저 쓰고(flush) 파일을 닫은 뒤(close) 결과를 화면에 보여준다
+    private fun stopRecording() {
+        isRecording = false
+        try {
+            csvWriter?.flush()   // 모아두기만 한 내용을 파일에 쓴다. 안 하면 끝부분이 사라질 수 있다
+            csvWriter?.close()   // 파일을 닫는다. 안 닫으면 파일이 망가질 수 있다
+        } catch (e: IOException) {
+            Log.e("EIS", "CSV 닫기 실패: ${e.message}")
+        }
+        csvWriter = null
+        val seconds = (lastSampleNs - firstSampleNs) / 1_000_000_000.0
+        recordButton.text = "기록 시작"
+        recordStatus.text = "저장됨: ${csvFile?.name}\n샘플 ${sampleCount}개 / 약 ${"%.1f".format(seconds)}초\n위치: ${csvFile?.parent}"
+        Log.d("EIS", "CSV 저장 완료: ${csvFile?.absolutePath} (샘플 ${sampleCount}개)")
+    }
 
 
 

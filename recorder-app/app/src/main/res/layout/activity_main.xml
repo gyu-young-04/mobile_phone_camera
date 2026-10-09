@@ -22,6 +22,33 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- [4단계] 기록 시작/정지 버튼. 이름표(recordButton)를 붙여두면 MainActivity.kt가 찾아서
+         "눌리면 이 코드를 실행해줘"(콜백)를 신청한다. 버튼 글자("기록 시작"↔"기록 정지")도 코드가 바꾼다 -->
+    <Button
+        android:id="@+id/recordButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:text="기록 시작"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/gyroText" />
+
+    <!-- [4단계] 기록 상태를 보여주는 칸 (기록 중 / 저장된 파일 이름과 위치) -->
+    <TextView
+        android:id="@+id/recordStatus"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:padding="16dp"
+        android:text="기록 대기 중"
+        android:textIsSelectable="true"
+        android:textSize="13sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/recordButton" />
+
     <!-- 글이 화면보다 길어도 손가락으로 위아래로 넘겨 볼 수 있게 감싸는 상자.
          0dp는 "부모에 붙인 위아래좌우 규칙대로 꽉 채워라"라는 뜻 -->
     <ScrollView
@@ -30,7 +57,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/gyroText">
+        app:layout_constraintTop_toBottomOf="@id/recordStatus">
 
         <!-- 카메라 정보를 글자로 보여주는 곳.
              id(infoText)를 붙여둔 이유: MainActivity.kt에서 이 이름으로 찾아서 글자를 채우기 위해서 -->
